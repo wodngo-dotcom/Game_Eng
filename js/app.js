@@ -44,6 +44,7 @@
   const waveform = $('waveform');
   const micBtn = $('micBtn');
   const idkBtn = $('idkBtn');
+  const listenBtn = $('listenBtn');
   const statusText = $('statusText');
   const milestoneOverlay = $('milestoneOverlay');
   const milestoneEmoji = $('milestoneEmoji');
@@ -123,55 +124,76 @@
     });
   }
 
-  function iconMarkup(kind) {
-    if (kind === 'table') {
-      return '<div class="icon-table"><div class="top"></div><div class="legs"><span></span><span></span></div></div>';
+  // Every object is drawn as a single SVG: the body shape/emoji/numeral and
+  // (unless the emoji already has its own face, e.g. animals) the eyes and
+  // mouth all live in the same viewBox coordinate system, so the face can
+  // never drift out of alignment with the artwork it belongs to.
+  function bodyMarkup(word) {
+    const v = word.visual;
+    if (v.type === 'emoji') {
+      return `<text x="100" y="112" text-anchor="middle" dominant-baseline="central" class="obj-emoji">${v.value}</text>`;
     }
-    if (kind === 'pillow') {
-      return '<div class="icon-pillow"></div>';
+    if (v.type === 'color') {
+      return `<circle cx="100" cy="100" r="86" fill="${v.value}" stroke="rgba(0,0,0,0.10)" stroke-width="4"/>`;
+    }
+    if (v.type === 'shape') {
+      const c = pick(SHAPE_PALETTE);
+      switch (v.value) {
+        case 'circle': return `<circle cx="100" cy="100" r="86" fill="${c}"/>`;
+        case 'square': return `<rect x="24" y="24" width="152" height="152" rx="24" fill="${c}"/>`;
+        case 'triangle': return `<polygon points="100,18 187,178 13,178" fill="${c}"/>`;
+        case 'diamond': return `<polygon points="100,14 186,100 100,186 14,100" fill="${c}"/>`;
+        case 'oval': return `<ellipse cx="100" cy="100" rx="95" ry="62" fill="${c}"/>`;
+        default: return '';
+      }
+    }
+    if (v.type === 'number') {
+      return `<rect x="16" y="16" width="168" height="168" rx="36" fill="#ffffff" stroke="#ffe1ea" stroke-width="10"/>
+        <text x="100" y="84" text-anchor="middle" dominant-baseline="central" font-size="80" font-weight="900" fill="#ff8fa3">${v.value}</text>`;
+    }
+    if (v.type === 'icon') {
+      if (v.value === 'table') {
+        return `<rect x="20" y="55" width="160" height="26" rx="8" fill="#b98354"/>
+          <rect x="34" y="81" width="18" height="80" rx="6" fill="#96693e"/>
+          <rect x="148" y="81" width="18" height="80" rx="6" fill="#96693e"/>`;
+      }
+      if (v.value === 'pillow') {
+        return `<path d="M20 100 Q20 45 100 45 Q180 45 180 100 Q180 150 100 150 Q20 150 20 100 Z" fill="#fff8ef" stroke="rgba(0,0,0,0.06)" stroke-width="3"/>
+          <path d="M55 80 Q100 100 145 80" stroke="rgba(0,0,0,0.12)" stroke-width="3" fill="none" stroke-dasharray="6 6"/>`;
+      }
     }
     return '';
   }
 
+  function faceMarkup(word) {
+    const { cy, scale } = faceLayoutFor(word);
+    return `<g class="face-group" transform="translate(100 ${cy * 200}) scale(${scale})">
+      <ellipse class="face-eye eye-l" cx="-19" cy="0" rx="10" ry="10"></ellipse>
+      <ellipse class="face-eye eye-r" cx="19" cy="0" rx="10" ry="10"></ellipse>
+      <path class="face-mouth" d="M -15 16 Q 0 26 15 16"></path>
+    </g>`;
+  }
+
+  const FACE_STATE_DEFS = {
+    idle: { eye: 10, wink: null, mouth: 'M -15 16 Q 0 26 15 16' },
+    listening: { eye: 13, wink: null, mouth: 'M -10 18 Q 0 18 10 18' },
+    correct: { eye: 11, wink: 2, mouth: 'M -17 14 Q 0 32 17 14' },
+    wrong: { eye: 5, wink: null, mouth: 'M -13 20 Q 0 15 13 20' },
+  };
+  function setFaceState(name) {
+    const g = characterEl.querySelector('.face-group');
+    if (!g) return;
+    const def = FACE_STATE_DEFS[name] || FACE_STATE_DEFS.idle;
+    const eyeL = g.querySelector('.eye-l');
+    const eyeR = g.querySelector('.eye-r');
+    const mouth = g.querySelector('.face-mouth');
+    if (eyeL) { eyeL.setAttribute('rx', def.eye); eyeL.setAttribute('ry', def.eye); }
+    if (eyeR) { eyeR.setAttribute('rx', def.eye); eyeR.setAttribute('ry', def.wink != null ? def.wink : def.eye); }
+    if (mouth) mouth.setAttribute('d', def.mouth);
+  }
+
   function renderCharacter(word) {
-    characterEl.className = 'character';
-    characterEl.style.background = '';
-    characterEl.style.removeProperty('--shape-fill');
-    characterEl.innerHTML = '';
-    characterEl.textContent = '';
-
-    const v = word.visual;
-    if (v.type === 'emoji') {
-      characterEl.classList.add('visual-emoji');
-      characterEl.textContent = v.value;
-    } else if (v.type === 'color') {
-      characterEl.classList.add('visual-color');
-      characterEl.style.background = v.value;
-      characterEl.style.border = '3px solid rgba(0,0,0,0.08)';
-    } else if (v.type === 'shape') {
-      characterEl.classList.add('visual-shape', `shape-${v.value}`);
-      const c = pick(SHAPE_PALETTE);
-      if (v.value === 'triangle') {
-        characterEl.style.setProperty('--shape-fill', c);
-      } else {
-        characterEl.style.background = c;
-      }
-    } else if (v.type === 'number') {
-      characterEl.classList.add('visual-number');
-      characterEl.textContent = String(v.value);
-    } else if (v.type === 'icon') {
-      characterEl.classList.add('visual-icon');
-      characterEl.innerHTML = iconMarkup(v.value);
-    }
-
-    const oldFace = characterStage.querySelector('.face');
-    if (oldFace) oldFace.remove();
-    if (!word.hasBuiltInFace) {
-      const face = document.createElement('div');
-      face.className = 'face';
-      face.innerHTML = '<div class="eye"></div><div class="eye"></div><div class="mouth"></div>';
-      characterStage.appendChild(face);
-    }
+    characterEl.innerHTML = bodyMarkup(word) + (word.hasBuiltInFace ? '' : faceMarkup(word));
 
     const meta = CATEGORY_META[word.category];
     categoryLabel.textContent = meta.label;
@@ -189,6 +211,7 @@
   function setStageState(name) {
     stage.classList.remove('state-idle', 'state-listening', 'state-correct', 'state-wrong');
     stage.classList.add(`state-${name}`);
+    setFaceState(name);
   }
 
   function revealWord(show) {
@@ -268,11 +291,18 @@
     stage.classList.toggle('state-listening', on);
     micBtn.classList.toggle('listening', on);
     waveform.classList.toggle('active', on);
+    setFaceState(on ? 'listening' : 'idle');
   }
 
   function setControlsEnabled(enabled) {
     micBtn.disabled = !enabled || !SpeechEngine.supported;
     idkBtn.disabled = !enabled;
+    listenBtn.disabled = !enabled;
+  }
+
+  function handleListen() {
+    if (resolving || !currentWord) return;
+    GameAudio.speak(currentWord.en);
   }
 
   // ---------------- Round flow ----------------
@@ -284,9 +314,9 @@
 
     currentWord = WORDS_BY_ID[queue.shift()];
     resetToasts();
-    setStageState('idle');
     revealWord(false);
     renderCharacter(currentWord);
+    setStageState('idle');
     triggerEntrance();
     GameAudio.playEntrance(currentWord);
     statusText.textContent = '그림을 보고 영어로 말해보세요!';
@@ -441,6 +471,7 @@
 
   micBtn.addEventListener('click', handleMicClick);
   idkBtn.addEventListener('click', handleIdk);
+  listenBtn.addEventListener('click', handleListen);
 
   // ---------------- Boot ----------------
   load();

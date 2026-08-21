@@ -159,95 +159,35 @@ button:active { transform: scale(0.96); }
 }
 
 .character {
-  font-size: clamp(64px, 22vw, 148px);
-  line-height: 1;
+  width: clamp(150px, 58vw, 250px);
+  height: clamp(150px, 58vw, 250px);
+  overflow: visible;
   filter: drop-shadow(0 10px 10px rgba(0,0,0,0.12));
   animation: idleBob 3.2s ease-in-out infinite;
-  transform-origin: 50% 85%;
+  transform-origin: 50% 50%;
   will-change: transform;
   flex-shrink: 0;
 }
+.character .obj-emoji { font-size: 150px; }
 
-.character.visual-color, .character.visual-shape {
-  width: clamp(90px, 34vw, 170px);
-  height: clamp(90px, 34vw, 170px);
-  border-radius: 50%;
-  box-shadow: inset 0 -10px 18px rgba(0,0,0,0.12), 0 10px 10px rgba(0,0,0,0.12);
-}
-.character.shape-square { border-radius: 18px; }
-.character.shape-triangle {
-  width: 0; height: 0; background: transparent !important; box-shadow: none;
-  border-left: clamp(45px,17vw,85px) solid transparent;
-  border-right: clamp(45px,17vw,85px) solid transparent;
-  border-bottom: clamp(90px,30vw,150px) solid var(--shape-fill, #ff8fa3);
-  filter: drop-shadow(0 8px 8px rgba(0,0,0,0.15));
-}
-.character.shape-diamond { transform: rotate(45deg); border-radius: 18px; }
-.character.shape-oval { border-radius: 50%; width: clamp(120px,40vw,210px); height: clamp(80px,26vw,130px); }
-
-.character.visual-number {
-  width: clamp(96px, 34vw, 170px);
-  height: clamp(96px, 34vw, 170px);
-  border-radius: 34px;
-  background: #fff;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: clamp(46px, 16vw, 84px);
-  font-weight: 900;
-  color: var(--accent);
-  box-shadow: 0 10px 10px rgba(0,0,0,0.12), inset 0 0 0 6px #ffe1ea;
-}
-
-.character.visual-icon {
-  width: clamp(100px, 34vw, 170px);
-  height: clamp(70px, 24vw, 120px);
-  position: relative;
-}
-.icon-table { display: flex; flex-direction: column; align-items: center; }
-.icon-table .top { width: 100%; height: 22%; background: #b98354; border-radius: 8px 8px 3px 3px; }
-.icon-table .legs { display: flex; justify-content: space-between; width: 84%; height: 70%; }
-.icon-table .legs span { width: 12%; background: #96693e; border-radius: 0 0 4px 4px; }
-.icon-pillow { width: 100%; height: 100%; background: #fff8ef; border-radius: 40% 40% 45% 45% / 55% 55% 45% 45%; box-shadow: inset -8px -8px 0 rgba(0,0,0,0.05), 0 8px 8px rgba(0,0,0,0.1); position: relative; }
-.icon-pillow::after { content:''; position:absolute; inset: 18% 20%; border-bottom: 3px dashed rgba(0,0,0,0.12); }
-
-/* Simple drawn face overlaid on items whose emoji/shape has no built-in face */
-.face {
-  position: absolute;
-  top: 18%;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 46%;
-  display: flex;
-  justify-content: space-between;
-  pointer-events: none;
-}
-.eye {
-  width: 14%;
-  aspect-ratio: 1;
-  background: #3a3038;
-  border-radius: 50%;
+/* Face is drawn inside the same SVG as the object (see app.js buildBodyMarkup /
+   buildFaceMarkup) so eyes/mouth are always positioned relative to that
+   object's own coordinate system — never a separately-aligned layer. */
+.face-eye {
+  fill: #3a3038;
   animation: blink 4.2s ease-in-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
 }
-.eye:nth-child(2) { animation-delay: 0.15s; }
-.mouth {
-  position: absolute;
-  top: 80%;
-  left: 50%;
-  transform: translateX(-50%);
-  width: 34%;
-  height: 14px;
-  border-bottom: 5px solid #3a3038;
-  border-radius: 0 0 50% 50%;
+.face-eye.eye-r { animation-delay: 0.15s; }
+.face-mouth {
+  stroke: #3a3038;
+  stroke-width: 6;
+  stroke-linecap: round;
+  fill: none;
 }
 
-/* face state variants */
-.stage.state-listening .face .eye { animation: none; transform: scale(1.25); }
 .stage.state-listening .character { animation: listenPulse 0.9s ease-in-out infinite; }
-.stage.state-correct .face .mouth { border-radius: 0 0 60% 60%; height: 18px; }
-.stage.state-correct .face .eye:nth-child(2) { transform: scaleY(0.15); }
-.stage.state-wrong .face .mouth { border-bottom-style: solid; transform: translateX(-50%) rotate(180deg) scaleY(0.6); top: 92%; }
-.stage.state-wrong .face .eye { transform: scaleY(0.5); }
 
 /* entrance animations (variant chosen randomly per round) */
 @keyframes bounceIn {
@@ -417,7 +357,7 @@ button:active { transform: scale(0.96); }
   50% { height: 24px; }
 }
 
-.mic-row { display: flex; align-items: center; gap: 22px; }
+.mic-row { display: flex; align-items: center; justify-content: center; gap: 12px; }
 
 .mic-btn {
   width: 84px;
@@ -446,10 +386,21 @@ button:active { transform: scale(0.96); }
   background: #fff;
   color: #a08a90;
   font-weight: 800;
-  padding: 12px 20px;
+  padding: 12px 16px;
   border-radius: 999px;
   box-shadow: 0 5px 0 #e7dde0;
-  font-size: 0.95rem;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+.listen-btn {
+  color: #4b8fa6;
+  box-shadow: 0 5px 0 #d8ecf2;
+}
+.listen-btn:disabled { opacity: 0.45; }
+
+@media (max-width: 360px) {
+  .idk-btn { padding: 10px 12px; font-size: 0.78rem; }
+  .mic-row { gap: 8px; }
 }
 
 .status-text {

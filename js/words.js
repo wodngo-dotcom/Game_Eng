@@ -151,6 +151,47 @@ function shape(value) { return { type: 'shape', value }; }
 function number(value) { return { type: 'number', value }; }
 function icon(value) { return { type: 'icon', value }; }
 
+/*
+ * Face placement, baked into the same SVG coordinate system as the object
+ * itself (see app.js buildCharacterSVG) so eyes/mouth always land relative
+ * to that specific object's own size and center — never a separate layer
+ * whose coordinates can drift out of sync with the artwork.
+ * cy = vertical center of the face as a fraction of the 200x200 viewBox
+ * (0 = top, 1 = bottom). scale = relative size of the face for objects
+ * that are thin or already visually busy. Falls back to a per-category
+ * default when a word has no override below.
+ */
+const FACE_DEFAULT = {
+  food: { cy: 0.44, scale: 1 },
+  colors: { cy: 0.46, scale: 1 },
+  shapes: { cy: 0.46, scale: 1 },
+  numbers: { cy: 0.80, scale: 0.55 },
+  objects: { cy: 0.42, scale: 0.9 },
+};
+const FACE_OVERRIDES = {
+  // food — round fruit sits high; drink containers/cones are tall and narrow
+  apple: { cy: 0.40 }, banana: { cy: 0.50 }, orange: { cy: 0.42 }, grape: { cy: 0.42 },
+  strawberry: { cy: 0.40 }, watermelon: { cy: 0.46 }, milk: { cy: 0.34, scale: 0.85 },
+  bread: { cy: 0.46 }, egg: { cy: 0.40 }, cheese: { cy: 0.48 }, pizza: { cy: 0.56 },
+  cookie: { cy: 0.46 }, candy: { cy: 0.42 }, 'ice-cream': { cy: 0.36, scale: 0.85 },
+  juice: { cy: 0.34, scale: 0.85 }, rice: { cy: 0.40 }, water: { cy: 0.42, scale: 0.8 },
+  cake: { cy: 0.40 }, potato: { cy: 0.48 }, carrot: { cy: 0.58, scale: 0.75 },
+  // shapes (emoji-based only; CSS-drawn shapes compute their own center)
+  star: { cy: 0.50 }, heart: { cy: 0.42 }, moon: { cy: 0.46 }, sun: { cy: 0.46 }, cloud: { cy: 0.52 },
+  // everyday objects — many are wide/flat/thin/asymmetric
+  chair: { cy: 0.36 }, table: { cy: 0.30, scale: 0.8 }, book: { cy: 0.42 },
+  ball: { cy: 0.46 }, cup: { cy: 0.40 }, spoon: { cy: 0.28, scale: 0.6 },
+  fork: { cy: 0.26, scale: 0.6 }, bag: { cy: 0.40 }, hat: { cy: 0.54 },
+  shoe: { cy: 0.44 }, clock: { cy: 0.46 }, door: { cy: 0.38 }, window: { cy: 0.42 },
+  bed: { cy: 0.32 }, pillow: { cy: 0.46 }, car: { cy: 0.42 }, bus: { cy: 0.40 },
+  key: { cy: 0.24, scale: 0.55 }, phone: { cy: 0.36 }, umbrella: { cy: 0.28, scale: 0.85 },
+};
+function faceLayoutFor(word) {
+  const base = FACE_DEFAULT[word.category] || { cy: 0.44, scale: 1 };
+  const override = FACE_OVERRIDES[word.id] || {};
+  return { cy: override.cy != null ? override.cy : base.cy, scale: override.scale != null ? override.scale : base.scale };
+}
+
 // sanity check: exactly 100 words, unique ids
 if (typeof console !== 'undefined') {
   const ids = new Set(WORDS.map((x) => x.id));
