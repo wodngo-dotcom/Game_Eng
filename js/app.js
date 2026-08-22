@@ -1,0 +1,494 @@
+/*
+ * Main game logic: state machine, rendering, persistence, reactions.
+ */
+
+(() => {
+  const STORAGE_KEY = 'ewg_progress_v1';
+  const MILESTONES = [10, 50];
+  const ROUND_ADVANCE_DELAY = 2400;
+  const REINSERT_MIN_GAP = 3;
+  const REINSERT_MAX_GAP = 8;
+
+  const PRAISE = [
+    'Great job!', 'Awesome!', 'You got it!', 'Fantastic!',
+    'Well done!', 'Super star!', 'Nice work!', "You're amazing!",
+  ];
+  const GENTLE = [
+    'Good try!', 'Almost there!', "Let's try again!", 'So close!',
+    'Nice try!', 'Keep going!', 'You can do it!',
+  ];
+  const SHAPE_PALETTE = ['#ff8fa3', '#ffd166', '#4dd0e1', '#8e7cff', '#66bb6a', '#ff9f5b'];
+
+  const WORDS_BY_ID = Object.fromEntries(WORDS.map((w) => [w.id, w]));
+  const ALL_IDS = WORDS.map((w) => w.id);
+
+  // ---------------- DOM refs ----------------
+  const $ = (id) => document.getElementById(id);
+  const startScreen = $('startScreen');
+  const startBtn = $('startBtn');
+  const progressFill = $('progressFill');
+  const progressLabel = $('progressLabel');
+  const starCount = $('starCount');
+  const badgeRow = $('badgeRow');
+  const resetBtn = $('resetBtn');
+  const categoryLabel = $('categoryLabel');
+  const stage = $('stage');
+  const characterStage = $('characterStage');
+  const characterEl = $('character');
+  const burstEl = $('burst');
+  const feedbackToast = $('feedbackToast');
+  const comboToast = $('comboToast');
+  const wordEn = $('wordEn');
+  const wordKo = $('wordKo');
+  const wordPlaceholder = $('wordPlaceholder');
+  const waveform = $('waveform');
+  const micBtn = $('micBtn');
+  const idkBtn = $('idkBtn');
+  const listenBtn = $('listenBtn');
+  const statusText = $('statusText');
+  const milestoneOverlay = $('milestoneOverlay');
+  const milestoneEmoji = $('milestoneEmoji');
+  const milestoneTitle = $('milestoneTitle');
+  const milestoneDesc = $('milestoneDesc');
+  const milestoneContinue = $('milestoneContinue');
+  const completeOverlay = $('completeOverlay');
+  const wordReviewGrid = $('wordReviewGrid');
+  const restartBtn = $('restartBtn');
+  const confettiLayer = $('confettiLayer');
+
+  // ---------------- State ----------------
+  let mastered = new Set();
+  let badges = new Set();
+  let stars = 0;
+  let comboCount = 0;
+  let queue = [];
+  let currentWord = null;
+  let listeningNow = false;
+  let resolving = false;
+
+  function shuffle(arr) {
+    const a = arr.slice();
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+  function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+  function load() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return;
+      const data = JSON.parse(raw);
+      mastered = new Set(data.mastered || []);
+      badges = new Set(data.badges || []);
+      stars = data.stars || 0;
+    } catch (e) { /* ignore corrupt storage */ }
+  }
+  function persist() {
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        mastered: [...mastered], badges: [...badges], stars,
+      }));
+    } catch (e) { /* storage unavailable, continue without persistence */ }
+  }
+
+  function buildQueue() {
+    queue = shuffle(ALL_IDS.filter((id) => !mastered.has(id)));
+  }
+
+  function insertWordLater(id) {
+    const remaining = queue.length;
+    if (remaining <= REINSERT_MIN_GAP) { queue.push(id); return; }
+    const span = Math.min(REINSERT_MAX_GAP, remaining) - REINSERT_MIN_GAP;
+    const pos = REINSERT_MIN_GAP + Math.floor(Math.random() * (Math.max(span, 0) + 1));
+    queue.splice(Math.min(pos, queue.length), 0, id);
+  }
+
+  // ---------------- Rendering ----------------
+  function updateTopbar() {
+    progressFill.style.width = `${mastered.size}%`;
+    progressLabel.textContent = `${mastered.size}/100`;
+    starCount.textContent = `⭐ ${stars}`;
+  }
+
+  function renderBadges() {
+    badgeRow.innerHTML = '';
+    const labels = { 10: '🥉 10개 마스터!', 50: '🥈 50개 마스터!', 100: '🏆 100개 마스터!' };
+    [...badges].sort((a, b) => a - b).forEach((count) => {
+      const pill = document.createElement('div');
+      pill.className = 'badge-pill';
+      pill.textContent = labels[count] || `${count}개 마스터!`;
+      badgeRow.appendChild(pill);
+    });
+  }
+
+  // Every object is drawn as a single SVG: the body shape/emoji/numeral and
+  // (unless the emoji already has its own face, e.g. animals) the eyes and
+  // mouth all live in the same viewBox coordinate system, so the face can
+  // never drift out of alignment with the artwork it belongs to.
+  function bodyMarkup(word) {
+    const v = word.visual;
+    if (v.type === 'emoji') {
+      return `<text x="100" y="112" text-anchor="middle" dominant-baseline="central" class="obj-emoji">${v.value}</text>`;
+    }
+    if (v.type === 'color') {
+      return `<circle cx="100" cy="100" r="86" fill="${v.value}" stroke="rgba(0,0,0,0.10)" stroke-width="4"/>`;
+    }
+    if (v.type === 'shape') {
+      const c = pick(SHAPE_PALETTE);
+      switch (v.value) {
+        case 'circle': return `<circle cx="100" cy="100" r="86" fill="${c}"/>`;
+        case 'square': return `<rect x="24" y="24" width="152" height="152" rx="24" fill="${c}"/>`;
+        case 'triangle': return `<polygon points="100,18 187,178 13,178" fill="${c}"/>`;
+        case 'diamond': return `<polygon points="100,14 186,100 100,186 14,100" fill="${c}"/>`;
+        case 'oval': return `<ellipse cx="100" cy="100" rx="95" ry="62" fill="${c}"/>`;
+        default: return '';
+      }
+    }
+    if (v.type === 'number') {
+      return `<rect x="16" y="16" width="168" height="168" rx="36" fill="#ffffff" stroke="#ffe1ea" stroke-width="10"/>
+        <text x="100" y="84" text-anchor="middle" dominant-baseline="central" font-size="80" font-weight="900" fill="#ff8fa3">${v.value}</text>`;
+    }
+    if (v.type === 'icon') {
+      if (v.value === 'table') {
+        return `<rect x="20" y="55" width="160" height="26" rx="8" fill="#b98354"/>
+          <rect x="34" y="81" width="18" height="80" rx="6" fill="#96693e"/>
+          <rect x="148" y="81" width="18" height="80" rx="6" fill="#96693e"/>`;
+      }
+      if (v.value === 'pillow') {
+        return `<path d="M20 100 Q20 45 100 45 Q180 45 180 100 Q180 150 100 150 Q20 150 20 100 Z" fill="#fff8ef" stroke="rgba(0,0,0,0.06)" stroke-width="3"/>
+          <path d="M55 80 Q100 100 145 80" stroke="rgba(0,0,0,0.12)" stroke-width="3" fill="none" stroke-dasharray="6 6"/>`;
+      }
+    }
+    return '';
+  }
+
+  function faceMarkup(word) {
+    const { cy, scale } = faceLayoutFor(word);
+    return `<g class="face-group" transform="translate(100 ${cy * 200}) scale(${scale})">
+      <ellipse class="face-eye eye-l" cx="-19" cy="0" rx="10" ry="10"></ellipse>
+      <ellipse class="face-eye eye-r" cx="19" cy="0" rx="10" ry="10"></ellipse>
+      <path class="face-mouth" d="M -15 16 Q 0 26 15 16"></path>
+    </g>`;
+  }
+
+  const FACE_STATE_DEFS = {
+    idle: { eye: 10, wink: null, mouth: 'M -15 16 Q 0 26 15 16' },
+    listening: { eye: 13, wink: null, mouth: 'M -10 18 Q 0 18 10 18' },
+    correct: { eye: 11, wink: 2, mouth: 'M -17 14 Q 0 32 17 14' },
+    wrong: { eye: 5, wink: null, mouth: 'M -13 20 Q 0 15 13 20' },
+  };
+  function setFaceState(name) {
+    const g = characterEl.querySelector('.face-group');
+    if (!g) return;
+    const def = FACE_STATE_DEFS[name] || FACE_STATE_DEFS.idle;
+    const eyeL = g.querySelector('.eye-l');
+    const eyeR = g.querySelector('.eye-r');
+    const mouth = g.querySelector('.face-mouth');
+    if (eyeL) { eyeL.setAttribute('rx', def.eye); eyeL.setAttribute('ry', def.eye); }
+    if (eyeR) { eyeR.setAttribute('rx', def.eye); eyeR.setAttribute('ry', def.wink != null ? def.wink : def.eye); }
+    if (mouth) mouth.setAttribute('d', def.mouth);
+  }
+
+  function renderCharacter(word) {
+    characterEl.innerHTML = bodyMarkup(word) + (word.hasBuiltInFace ? '' : faceMarkup(word));
+
+    const meta = CATEGORY_META[word.category];
+    categoryLabel.textContent = meta.label;
+    categoryLabel.style.background = meta.color;
+    $('card').style.background = meta.bg;
+  }
+
+  function triggerEntrance() {
+    characterStage.classList.remove('enter-bounce', 'enter-spin');
+    // eslint-disable-next-line no-unused-expressions
+    void characterStage.offsetWidth; // force reflow so animation replays
+    characterStage.classList.add(Math.random() < 0.5 ? 'enter-bounce' : 'enter-spin');
+  }
+
+  function setStageState(name) {
+    stage.classList.remove('state-idle', 'state-listening', 'state-correct', 'state-wrong');
+    stage.classList.add(`state-${name}`);
+    setFaceState(name);
+  }
+
+  function revealWord(show) {
+    if (show) {
+      wordPlaceholder.classList.add('hidden');
+      wordEn.textContent = currentWord.en;
+      wordKo.textContent = currentWord.ko;
+      requestAnimationFrame(() => {
+        wordEn.classList.add('shown');
+        wordKo.classList.add('shown');
+      });
+    } else {
+      wordPlaceholder.classList.remove('hidden');
+      wordEn.classList.remove('shown');
+      wordKo.classList.remove('shown');
+      wordEn.textContent = '';
+      wordKo.textContent = '';
+    }
+  }
+
+  function resetToasts() {
+    feedbackToast.className = 'feedback-toast';
+    feedbackToast.textContent = '';
+    comboToast.className = 'combo-toast';
+    comboToast.textContent = '';
+    burstEl.innerHTML = '';
+  }
+
+  function showToast(el, text, cls) {
+    el.className = `feedback-toast show ${cls}`;
+    el.textContent = text;
+  }
+
+  function showCombo(text) {
+    comboToast.textContent = text;
+    comboToast.className = 'combo-toast show';
+  }
+
+  function spawnBurst() {
+    burstEl.innerHTML = '';
+    const n = 16;
+    for (let i = 0; i < n; i++) {
+      const span = document.createElement('span');
+      const angle = (i / n) * Math.PI * 2 + (Math.random() * 0.4 - 0.2);
+      const dist = 60 + Math.random() * 70;
+      span.style.setProperty('--p-x', `${Math.cos(angle) * dist}px`);
+      span.style.setProperty('--p-y', `${Math.sin(angle) * dist}px`);
+      span.style.setProperty('--p-color', pick(['#ffd166', '#ff8fa3', '#4dd0e1', '#8e7cff', '#66bb6a']));
+      span.style.setProperty('--p-delay', `${Math.random() * 0.15}s`);
+      burstEl.appendChild(span);
+    }
+    setTimeout(() => { burstEl.innerHTML = ''; }, 900);
+  }
+
+  function spawnConfetti(count) {
+    confettiLayer.classList.remove('hidden');
+    confettiLayer.innerHTML = '';
+    const colors = ['#ff8fa3', '#ffd166', '#4dd0e1', '#8e7cff', '#66bb6a', '#ff9f5b'];
+    for (let i = 0; i < count; i++) {
+      const piece = document.createElement('div');
+      piece.className = 'confetti-piece';
+      piece.style.left = `${Math.random() * 100}%`;
+      piece.style.background = pick(colors);
+      piece.style.animationDuration = `${1.8 + Math.random() * 1.6}s`;
+      piece.style.animationDelay = `${Math.random() * 0.6}s`;
+      piece.style.borderRadius = Math.random() < 0.5 ? '50%' : '2px';
+      confettiLayer.appendChild(piece);
+    }
+    setTimeout(() => {
+      confettiLayer.classList.add('hidden');
+      confettiLayer.innerHTML = '';
+    }, 3600);
+  }
+
+  function setMicListening(on) {
+    listeningNow = on;
+    stage.classList.toggle('state-listening', on);
+    micBtn.classList.toggle('listening', on);
+    waveform.classList.toggle('active', on);
+    setFaceState(on ? 'listening' : 'idle');
+  }
+
+  function setControlsEnabled(enabled) {
+    micBtn.disabled = !enabled || !SpeechEngine.supported;
+    idkBtn.disabled = !enabled;
+    listenBtn.disabled = !enabled;
+  }
+
+  function handleListen() {
+    if (resolving || !currentWord) return;
+    GameAudio.speak(currentWord.en);
+  }
+
+  // ---------------- Round flow ----------------
+  function nextRound() {
+    resolving = false;
+    if (mastered.size >= 100) { showComplete(); return; }
+    if (queue.length === 0) buildQueue();
+    if (queue.length === 0) { showComplete(); return; }
+
+    currentWord = WORDS_BY_ID[queue.shift()];
+    resetToasts();
+    revealWord(false);
+    renderCharacter(currentWord);
+    setStageState('idle');
+    triggerEntrance();
+    GameAudio.playEntrance(currentWord);
+    statusText.textContent = '그림을 보고 영어로 말해보세요!';
+    setControlsEnabled(true);
+    updateTopbar();
+  }
+
+  function handleCorrect() {
+    if (resolving) return;
+    resolving = true;
+    setControlsEnabled(false);
+
+    mastered.add(currentWord.id);
+    stars += 1;
+    comboCount += 1;
+    persist();
+    updateTopbar();
+
+    setStageState('correct');
+    spawnBurst();
+    showToast(feedbackToast, pick(PRAISE), 'good');
+    if (comboCount >= 2) showCombo(`🔥 ${comboCount} in a row!`);
+    GameAudio.playCorrect(comboCount);
+    revealWord(true);
+    statusText.textContent = '정답이에요!';
+
+    setTimeout(() => GameAudio.speak(currentWord.en), 650);
+
+    const count = mastered.size;
+    if (count === 100) {
+      setTimeout(() => showComplete(), ROUND_ADVANCE_DELAY);
+      return;
+    }
+    if (MILESTONES.includes(count) && !badges.has(count)) {
+      badges.add(count);
+      persist();
+      renderBadges();
+      setTimeout(() => showMilestone(count), ROUND_ADVANCE_DELAY);
+      return;
+    }
+    setTimeout(nextRound, ROUND_ADVANCE_DELAY);
+  }
+
+  function handleWrong() {
+    if (resolving) return;
+    resolving = true;
+    setControlsEnabled(false);
+
+    comboCount = 0;
+    setStageState('wrong');
+    showToast(feedbackToast, pick(GENTLE), 'soft');
+    GameAudio.playGentleTryAgain();
+    revealWord(true);
+    statusText.textContent = '괜찮아요, 다시 들어볼까요?';
+
+    setTimeout(() => GameAudio.speak(currentWord.en), 650);
+    insertWordLater(currentWord.id);
+    setTimeout(nextRound, ROUND_ADVANCE_DELAY);
+  }
+
+  function handleMicClick() {
+    if (resolving || listeningNow) return;
+    if (!SpeechEngine.supported) {
+      statusText.textContent = '이 브라우저는 음성인식을 지원하지 않아요. Chrome을 사용해보세요.';
+      return;
+    }
+    setMicListening(true);
+    GameAudio.playListenStart();
+    statusText.textContent = '듣고 있어요... 🎧';
+    SpeechEngine.start({
+      onResult(alts) {
+        setMicListening(false);
+        const matched = alts.some((a) => SpeechEngine.isMatch(a, currentWord.en));
+        if (matched) handleCorrect(); else handleWrong();
+      },
+      onError(err) {
+        setMicListening(false);
+        if (err === 'no-speech') statusText.textContent = '다시 마이크를 눌러 말해보세요!';
+        else if (err === 'not-allowed' || err === 'service-not-allowed') statusText.textContent = '마이크 권한을 허용해주세요.';
+        else statusText.textContent = '다시 한 번 눌러주세요.';
+      },
+      onEnd() {
+        setMicListening(false);
+      },
+    });
+  }
+
+  function handleIdk() {
+    if (resolving) return;
+    if (listeningNow) { SpeechEngine.stop(); setMicListening(false); }
+    handleWrong();
+  }
+
+  // ---------------- Milestones / completion ----------------
+  const MILESTONE_INFO = {
+    10: { emoji: '🥉', title: '10개 단어 마스터!', desc: '정말 잘하고 있어요! 계속 도전해봐요 💪' },
+    50: { emoji: '🥈', title: '50개 단어 마스터!', desc: '벌써 절반이나 배웠어요! 대단해요 🌟' },
+  };
+  function showMilestone(count) {
+    const info = MILESTONE_INFO[count] || { emoji: '🏅', title: `${count}개 단어 마스터!`, desc: '정말 대단해요!' };
+    milestoneEmoji.textContent = info.emoji;
+    milestoneTitle.textContent = info.title;
+    milestoneDesc.textContent = info.desc;
+    milestoneOverlay.classList.remove('hidden');
+    spawnConfetti(60);
+  }
+  milestoneContinue.addEventListener('click', () => {
+    milestoneOverlay.classList.add('hidden');
+    nextRound();
+  });
+
+  function showComplete() {
+    if (!badges.has(100)) { badges.add(100); renderBadges(); persist(); }
+    wordReviewGrid.innerHTML = '';
+    WORDS.forEach((w) => {
+      const cell = document.createElement('div');
+      cell.textContent = `${w.en}`;
+      wordReviewGrid.appendChild(cell);
+    });
+    completeOverlay.classList.remove('hidden');
+    spawnConfetti(100);
+  }
+  restartBtn.addEventListener('click', () => {
+    if (!confirm('정말 처음부터 다시 시작할까요? 지금까지의 기록이 모두 사라져요.')) return;
+    try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
+    mastered = new Set();
+    badges = new Set();
+    stars = 0;
+    comboCount = 0;
+    buildQueue();
+    updateTopbar();
+    renderBadges();
+    completeOverlay.classList.add('hidden');
+    milestoneOverlay.classList.add('hidden');
+    nextRound();
+  });
+
+  resetBtn.addEventListener('click', () => {
+    if (!confirm('정말 처음부터 다시 시작할까요? 지금까지의 기록이 모두 사라져요.')) return;
+    try { localStorage.removeItem(STORAGE_KEY); } catch (e) {}
+    mastered = new Set();
+    badges = new Set();
+    stars = 0;
+    comboCount = 0;
+    buildQueue();
+    updateTopbar();
+    renderBadges();
+    completeOverlay.classList.add('hidden');
+    milestoneOverlay.classList.add('hidden');
+    nextRound();
+  });
+
+  micBtn.addEventListener('click', handleMicClick);
+  idkBtn.addEventListener('click', handleIdk);
+  listenBtn.addEventListener('click', handleListen);
+
+  // ---------------- Boot ----------------
+  load();
+  buildQueue();
+  updateTopbar();
+  renderBadges();
+  if (!SpeechEngine.supported) {
+    micBtn.disabled = true;
+  }
+
+  startBtn.addEventListener('click', () => {
+    GameAudio.unlock();
+    startScreen.classList.add('hidden');
+    if (mastered.size >= 100) {
+      showComplete();
+    } else {
+      nextRound();
+    }
+  });
+})();
