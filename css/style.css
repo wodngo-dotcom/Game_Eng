@@ -149,6 +149,15 @@ button:active { transform: scale(0.96); }
   overflow: hidden;
 }
 
+.stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .character-stage {
   position: relative;
   display: flex;
@@ -214,6 +223,39 @@ button:active { transform: scale(0.96); }
   100% { transform: translateY(0) scale(1) rotate(0); }
 }
 .stage.state-correct .character { animation: correctJump 0.75s ease-out; }
+
+/* whole-card punch + flash, so a correct answer reads as unmistakably big */
+@keyframes cardPunch {
+  0% { transform: scale(1); }
+  30% { transform: scale(1.055); }
+  60% { transform: scale(0.985); }
+  100% { transform: scale(1); }
+}
+.card.pulse-correct { animation: cardPunch 0.5s cubic-bezier(.34,1.56,.64,1); }
+
+.correct-flash {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--card-radius);
+  background: radial-gradient(circle, rgba(255,255,255,0.95) 0%, rgba(255,214,102,0.55) 45%, rgba(255,214,102,0) 72%);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 4;
+}
+.correct-flash.play { animation: flashPulse 0.6s ease-out; }
+@keyframes flashPulse {
+  0% { opacity: 0; transform: scale(0.4); }
+  35% { opacity: 1; transform: scale(1.15); }
+  100% { opacity: 0; transform: scale(1.4); }
+}
+
+@keyframes starCounterPop {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.35) rotate(-6deg); box-shadow: 0 2px 0 #f0d9b5, 0 0 0 8px rgba(255,209,102,0.35); }
+  65% { transform: scale(0.95) rotate(4deg); }
+  100% { transform: scale(1) rotate(0); }
+}
+.star-count.pop { animation: starCounterPop 0.55s cubic-bezier(.34,1.56,.64,1); }
 @keyframes wrongWobble {
   0%, 100% { transform: rotate(0deg); }
   20% { transform: rotate(-9deg) translateX(-3%); }
@@ -232,16 +274,23 @@ button:active { transform: scale(0.96); }
 .burst span {
   position: absolute;
   top: 50%; left: 50%;
-  width: 10px; height: 10px;
+  width: var(--p-size, 10px); height: var(--p-size, 10px);
   background: var(--p-color, #ffd166);
   border-radius: 50%;
   transform: translate(-50%, -50%);
-  animation: particleBurst 0.7s ease-out forwards;
+  animation: particleBurst 0.85s ease-out forwards;
   animation-delay: var(--p-delay, 0s);
 }
+.burst span.emoji {
+  width: auto; height: auto;
+  background: none;
+  font-size: var(--p-size, 22px);
+  line-height: 1;
+}
 @keyframes particleBurst {
-  0% { opacity: 1; transform: translate(-50%, -50%) translate(0,0) scale(1); }
-  100% { opacity: 0; transform: translate(-50%, -50%) translate(var(--p-x), var(--p-y)) scale(0.3); }
+  0% { opacity: 1; transform: translate(-50%, -50%) translate(0,0) scale(0.4) rotate(0deg); }
+  25% { opacity: 1; transform: translate(-50%, -50%) translate(calc(var(--p-x) * 0.4), calc(var(--p-y) * 0.4)) scale(1.15) rotate(60deg); }
+  100% { opacity: 0; transform: translate(-50%, -50%) translate(var(--p-x), var(--p-y)) scale(0.35) rotate(200deg); }
 }
 
 /* word reveal text */
@@ -506,5 +555,5 @@ button:active { transform: scale(0.96); }
 }
 @media (max-height: 620px) {
   .card { max-height: 38vh; }
-  .character { font-size: clamp(52px, 18vw, 110px); }
+  .character { width: clamp(110px, 42vw, 180px); height: clamp(110px, 42vw, 180px); }
 }
