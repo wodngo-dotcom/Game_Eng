@@ -32,6 +32,8 @@
   const badgeRow = $('badgeRow');
   const resetBtn = $('resetBtn');
   const categoryLabel = $('categoryLabel');
+  const card = $('card');
+  const correctFlash = $('correctFlash');
   const stage = $('stage');
   const characterStage = $('characterStage');
   const characterEl = $('character');
@@ -174,7 +176,7 @@
     const meta = CATEGORY_META[word.category];
     categoryLabel.textContent = meta.label;
     categoryLabel.style.background = meta.color;
-    $('card').style.background = meta.bg;
+    card.style.background = meta.bg;
   }
 
   function triggerEntrance() {
@@ -225,20 +227,43 @@
     comboToast.className = 'combo-toast show';
   }
 
+  const BURST_EMOJI = ['✨', '⭐', '🌟'];
   function spawnBurst() {
     burstEl.innerHTML = '';
-    const n = 16;
+    const n = 26;
     for (let i = 0; i < n; i++) {
+      const useEmoji = i % 3 === 0;
       const span = document.createElement('span');
       const angle = (i / n) * Math.PI * 2 + (Math.random() * 0.4 - 0.2);
-      const dist = 60 + Math.random() * 70;
+      const dist = 85 + Math.random() * 95;
       span.style.setProperty('--p-x', `${Math.cos(angle) * dist}px`);
       span.style.setProperty('--p-y', `${Math.sin(angle) * dist}px`);
-      span.style.setProperty('--p-color', pick(['#ffd166', '#ff8fa3', '#4dd0e1', '#8e7cff', '#66bb6a']));
-      span.style.setProperty('--p-delay', `${Math.random() * 0.15}s`);
+      span.style.setProperty('--p-delay', `${Math.random() * 0.12}s`);
+      if (useEmoji) {
+        span.className = 'emoji';
+        span.style.setProperty('--p-size', `${16 + Math.random() * 14}px`);
+        span.textContent = pick(BURST_EMOJI);
+      } else {
+        span.style.setProperty('--p-size', `${8 + Math.random() * 8}px`);
+        span.style.setProperty('--p-color', pick(['#ffd166', '#ff8fa3', '#4dd0e1', '#8e7cff', '#66bb6a', '#ff9f5b']));
+      }
       burstEl.appendChild(span);
     }
-    setTimeout(() => { burstEl.innerHTML = ''; }, 900);
+    setTimeout(() => { burstEl.innerHTML = ''; }, 1050);
+  }
+
+  function celebrateCorrect() {
+    card.classList.remove('pulse-correct');
+    void card.offsetWidth;
+    card.classList.add('pulse-correct');
+
+    correctFlash.classList.remove('play');
+    void correctFlash.offsetWidth;
+    correctFlash.classList.add('play');
+
+    starCount.classList.remove('pop');
+    void starCount.offsetWidth;
+    starCount.classList.add('pop');
   }
 
   function spawnConfetti(count) {
@@ -311,6 +336,7 @@
 
     setStageState('correct');
     spawnBurst();
+    celebrateCorrect();
     showToast(feedbackToast, pick(PRAISE), 'good');
     if (comboCount >= 2) showCombo(`🔥 ${comboCount} in a row!`);
     GameAudio.playCorrect(comboCount);

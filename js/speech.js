@@ -59,8 +59,17 @@ function isMatch(transcript, target) {
   if (guess.length >= 2 && (guess.includes(t) || t.includes(guess))) return true;
 
   const sim = similarity(guess, t);
-  const threshold = t.length <= 3 ? 0.66 : t.length <= 5 ? 0.55 : 0.45;
+  const threshold = t.length <= 4 ? 0.5 : t.length <= 7 ? 0.4 : 0.35;
   if (sim >= threshold) return true;
+
+  // Very short target words (egg, cup, red, ...) are the hardest for a young
+  // child's speech to be transcribed precisely: a single misheard letter can
+  // already sink the edit-distance ratio below any reasonable threshold. As
+  // a safety net, accept a guess of roughly the same length that at least
+  // starts with the same sound.
+  if (t.length <= 4 && guess.length >= 1 && guess[0] === t[0] && Math.abs(guess.length - t.length) <= 1) {
+    return true;
+  }
 
   if (Object.prototype.hasOwnProperty.call(NUMBER_WORDS, target)) {
     const digit = String(NUMBER_WORDS[target]);
