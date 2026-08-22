@@ -168,23 +168,17 @@ button:active { transform: scale(0.96); }
   will-change: transform;
   flex-shrink: 0;
 }
-.character .obj-emoji { font-size: 150px; }
-
-/* Face is drawn inside the same SVG as the object (see app.js buildBodyMarkup /
-   buildFaceMarkup) so eyes/mouth are always positioned relative to that
-   object's own coordinate system — never a separately-aligned layer. */
-.face-eye {
-  fill: #3a3038;
-  animation: blink 4.2s ease-in-out infinite;
-  transform-box: fill-box;
-  transform-origin: center;
-}
-.face-eye.eye-r { animation-delay: 0.15s; }
-.face-mouth {
-  stroke: #3a3038;
-  stroke-width: 6;
-  stroke-linecap: round;
-  fill: none;
+/* Emoji are rendered inside an SVG foreignObject via flexbox centering
+   (see app.js bodyMarkup) so they land dead-center regardless of the
+   font's own baseline metrics. */
+.emoji-box {
+  width: 200px;
+  height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 150px;
+  line-height: 1;
 }
 
 .stage.state-listening .character { animation: listenPulse 0.9s ease-in-out infinite; }
@@ -207,10 +201,6 @@ button:active { transform: scale(0.96); }
 @keyframes idleBob {
   0%, 100% { transform: translateY(0) rotate(0deg); }
   50% { transform: translateY(-4%) rotate(-2deg); }
-}
-@keyframes blink {
-  0%, 90%, 100% { transform: scaleY(1); }
-  95% { transform: scaleY(0.12); }
 }
 @keyframes listenPulse {
   0%, 100% { transform: scale(1); }
