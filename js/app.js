@@ -124,14 +124,17 @@
     });
   }
 
-  // Every object is drawn as a single SVG: the body shape/emoji/numeral and
-  // (unless the emoji already has its own face, e.g. animals) the eyes and
-  // mouth all live in the same viewBox coordinate system, so the face can
-  // never drift out of alignment with the artwork it belongs to.
+  // Every object is drawn as a single SVG so its artwork is always centered
+  // in the same 200x200 coordinate system regardless of category. Emoji are
+  // rendered inside a foreignObject with a flex-centered div rather than
+  // SVG <text>, since text-anchor/dominant-baseline centering varies by
+  // font metrics and tends to sit off-center for emoji glyphs.
   function bodyMarkup(word) {
     const v = word.visual;
     if (v.type === 'emoji') {
-      return `<text x="100" y="112" text-anchor="middle" dominant-baseline="central" class="obj-emoji">${v.value}</text>`;
+      return `<foreignObject x="0" y="0" width="200" height="200">
+        <div xmlns="http://www.w3.org/1999/xhtml" class="emoji-box">${v.value}</div>
+      </foreignObject>`;
     }
     if (v.type === 'color') {
       return `<circle cx="100" cy="100" r="86" fill="${v.value}" stroke="rgba(0,0,0,0.10)" stroke-width="4"/>`;
@@ -149,7 +152,7 @@
     }
     if (v.type === 'number') {
       return `<rect x="16" y="16" width="168" height="168" rx="36" fill="#ffffff" stroke="#ffe1ea" stroke-width="10"/>
-        <text x="100" y="84" text-anchor="middle" dominant-baseline="central" font-size="80" font-weight="900" fill="#ff8fa3">${v.value}</text>`;
+        <text x="100" y="100" text-anchor="middle" dominant-baseline="central" font-size="120" font-weight="900" fill="#ff8fa3">${v.value}</text>`;
     }
     if (v.type === 'icon') {
       if (v.value === 'table') {
@@ -165,35 +168,8 @@
     return '';
   }
 
-  function faceMarkup(word) {
-    const { cy, scale } = faceLayoutFor(word);
-    return `<g class="face-group" transform="translate(100 ${cy * 200}) scale(${scale})">
-      <ellipse class="face-eye eye-l" cx="-19" cy="0" rx="10" ry="10"></ellipse>
-      <ellipse class="face-eye eye-r" cx="19" cy="0" rx="10" ry="10"></ellipse>
-      <path class="face-mouth" d="M -15 16 Q 0 26 15 16"></path>
-    </g>`;
-  }
-
-  const FACE_STATE_DEFS = {
-    idle: { eye: 10, wink: null, mouth: 'M -15 16 Q 0 26 15 16' },
-    listening: { eye: 13, wink: null, mouth: 'M -10 18 Q 0 18 10 18' },
-    correct: { eye: 11, wink: 2, mouth: 'M -17 14 Q 0 32 17 14' },
-    wrong: { eye: 5, wink: null, mouth: 'M -13 20 Q 0 15 13 20' },
-  };
-  function setFaceState(name) {
-    const g = characterEl.querySelector('.face-group');
-    if (!g) return;
-    const def = FACE_STATE_DEFS[name] || FACE_STATE_DEFS.idle;
-    const eyeL = g.querySelector('.eye-l');
-    const eyeR = g.querySelector('.eye-r');
-    const mouth = g.querySelector('.face-mouth');
-    if (eyeL) { eyeL.setAttribute('rx', def.eye); eyeL.setAttribute('ry', def.eye); }
-    if (eyeR) { eyeR.setAttribute('rx', def.eye); eyeR.setAttribute('ry', def.wink != null ? def.wink : def.eye); }
-    if (mouth) mouth.setAttribute('d', def.mouth);
-  }
-
   function renderCharacter(word) {
-    characterEl.innerHTML = bodyMarkup(word) + (word.hasBuiltInFace ? '' : faceMarkup(word));
+    characterEl.innerHTML = bodyMarkup(word);
 
     const meta = CATEGORY_META[word.category];
     categoryLabel.textContent = meta.label;
@@ -211,7 +187,6 @@
   function setStageState(name) {
     stage.classList.remove('state-idle', 'state-listening', 'state-correct', 'state-wrong');
     stage.classList.add(`state-${name}`);
-    setFaceState(name);
   }
 
   function revealWord(show) {
@@ -291,7 +266,6 @@
     stage.classList.toggle('state-listening', on);
     micBtn.classList.toggle('listening', on);
     waveform.classList.toggle('active', on);
-    setFaceState(on ? 'listening' : 'idle');
   }
 
   function setControlsEnabled(enabled) {
