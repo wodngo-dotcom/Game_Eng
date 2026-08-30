@@ -136,6 +136,22 @@ button:active { transform: scale(0.96); }
   opacity: 0.92;
 }
 
+/* Korean gloss: always visible under the picture (unlike the English word,
+   which stays hidden behind "? ? ?" until the round is answered) so the
+   child and parent can always tell what the picture is meant to be. */
+.ko-caption {
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--ink);
+  background: #fff;
+  padding: 5px 18px;
+  border-radius: 999px;
+  box-shadow: 0 3px 0 rgba(0,0,0,0.05);
+  min-height: 1.4em;
+  display: flex;
+  align-items: center;
+}
+
 .card {
   width: 100%;
   aspect-ratio: 1 / 0.92;
@@ -312,13 +328,6 @@ button:active { transform: scale(0.96); }
   transition: opacity 0.35s ease, transform 0.35s ease;
 }
 .word-reveal .en.shown { opacity: 1; transform: translateY(0); }
-.word-reveal .ko {
-  font-size: 0.95rem;
-  color: #9a8b90;
-  opacity: 0;
-  transition: opacity 0.35s ease 0.1s;
-}
-.word-reveal .ko.shown { opacity: 1; }
 .word-reveal .placeholder {
   font-size: 1.4rem;
   letter-spacing: 6px;
