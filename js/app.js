@@ -195,17 +195,13 @@
     if (show) {
       wordPlaceholder.classList.add('hidden');
       wordEn.textContent = currentWord.en;
-      wordKo.textContent = currentWord.ko;
       requestAnimationFrame(() => {
         wordEn.classList.add('shown');
-        wordKo.classList.add('shown');
       });
     } else {
       wordPlaceholder.classList.remove('hidden');
       wordEn.classList.remove('shown');
-      wordKo.classList.remove('shown');
       wordEn.textContent = '';
-      wordKo.textContent = '';
     }
   }
 
@@ -314,6 +310,7 @@
     currentWord = WORDS_BY_ID[queue.shift()];
     resetToasts();
     revealWord(false);
+    wordKo.textContent = currentWord.ko;
     renderCharacter(currentWord);
     setStageState('idle');
     triggerEntrance();
